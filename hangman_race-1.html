@@ -1,0 +1,1842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hangman</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Playfair+Display+SC:wght@700&family=DM+Mono:wght@400;500&family=Lato:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#080608;
+  --surface:#0f0c10;
+  --surface2:#161118;
+  --border:rgba(200,160,80,0.18);
+  --border2:rgba(200,160,80,0.35);
+  --gold:#c8a050;
+  --gold-hi:#f0c870;
+  --gold-dim:#6a4e20;
+  --crimson:#c03030;
+  --crimson-dim:#7a1a1a;
+  --emerald:#2a8a5a;
+  --emerald-hi:#4abf80;
+  --text:#e8dcc8;
+  --text-dim:#8a7860;
+  --panel:rgba(15,12,16,0.92);
+}
+
+@keyframes titleReveal{from{opacity:0;letter-spacing:.5em}to{opacity:1;letter-spacing:.08em}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}60%{transform:translateX(8px)}80%{transform:translateX(-4px)}}
+@keyframes tileReveal{0%{transform:scale(0) rotateY(90deg);opacity:0}60%{transform:scale(1.1) rotateY(-5deg)}100%{transform:scale(1) rotateY(0);opacity:1}}
+@keyframes heartbreak{0%{transform:scale(1)}30%{transform:scale(1.4)}60%{transform:scale(0.7) rotate(20deg)}100%{transform:scale(0.75);opacity:.2}}
+@keyframes winPulse{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes floatUp{0%{transform:translateY(0);opacity:.7}100%{transform:translateY(-100vh);opacity:0}}
+@keyframes dimFlicker{0%,100%{opacity:.55}47%{opacity:.4}50%{opacity:.25}53%{opacity:.45}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+html,body{
+  min-height:100%;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Lato',sans-serif;
+  overflow-x:hidden;
+}
+
+/* ── Starfield canvas ── */
+#starCanvas{
+  position:fixed;inset:0;
+  pointer-events:none;
+  z-index:0;
+  opacity:.6;
+}
+
+/* ── Fog layers ── */
+.fog{
+  position:fixed;inset:0;pointer-events:none;z-index:1;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(180,100,20,.07) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 70% at 80% 110%, rgba(120,30,30,.05) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 20% 90%, rgba(30,20,60,.06) 0%,transparent 60%);
+}
+
+/* ── Layout ── */
+.page{
+  position:relative;z-index:2;
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  align-items:center;
+  padding:36px 20px 56px;
+}
+
+/* ── Header ── */
+header{
+  text-align:center;
+  margin-bottom:36px;
+  animation:fadeUp .8s ease both;
+}
+
+.title-ornament{
+  display:flex;align-items:center;justify-content:center;gap:16px;
+  margin-bottom:8px;
+}
+.ornament-line{
+  flex:1;max-width:120px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold-dim));
+  opacity:.7;
+}
+.ornament-line.r{background:linear-gradient(90deg,var(--gold-dim),transparent)}
+.ornament-diamond{
+  width:8px;height:8px;
+  border:1.5px solid var(--gold);
+  transform:rotate(45deg);
+  flex-shrink:0;
+}
+
+h1{
+  font-family:'Playfair Display SC',serif;
+  font-size:clamp(2.2rem,6vw,4rem);
+  font-weight:700;
+  color:var(--gold-hi);
+  letter-spacing:.08em;
+  line-height:1;
+  text-shadow:0 2px 4px rgba(0,0,0,.8),0 0 60px rgba(200,160,80,.2);
+  animation:titleReveal .9s cubic-bezier(.2,0,.3,1) both;
+}
+
+.subtitle{
+  font-family:'Lato',sans-serif;
+  font-weight:300;
+  font-size:.8rem;
+  letter-spacing:.35em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  margin-top:10px;
+  animation:dimFlicker 8s ease-in-out infinite;
+}
+
+.score-row{
+  display:flex;gap:28px;justify-content:center;
+  margin-top:16px;
+  animation:fadeUp .8s .2s ease both;
+}
+.score-pill{
+  font-family:'DM Mono',monospace;
+  font-size:.75rem;
+  letter-spacing:.12em;
+  color:var(--text-dim);
+  padding:4px 14px;
+  border:1px solid var(--border);
+  border-radius:20px;
+  background:rgba(255,255,255,.02);
+}
+.score-pill span{
+  color:var(--gold);
+  font-weight:500;
+  margin-left:6px;
+}
+
+/* ── Main game area ── */
+.arena{
+  display:flex;
+  flex-wrap:wrap;
+  gap:32px;
+  justify-content:center;
+  align-items:flex-start;
+  width:100%;max-width:980px;
+  animation:fadeUp .8s .15s ease both;
+}
+
+/* ── Gallows card ── */
+.gallows-card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:24px 20px 20px;
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(0,0,0,.5),0 20px 60px rgba(0,0,0,.6);
+}
+.gallows-card::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold-dim),transparent);
+}
+.gallows-card::after{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(200,160,80,.04) 0%,transparent 60%);
+  pointer-events:none;
+}
+
+canvas#gc{display:block;position:relative;z-index:1}
+
+/* ── Lives ── */
+.lives-bar{
+  display:flex;gap:8px;align-items:center;
+  background:rgba(0,0,0,.4);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:7px 16px;
+  position:relative;z-index:1;
+}
+.life{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--crimson);
+  box-shadow:0 0 6px rgba(192,48,48,.6);
+  transition:all .4s ease;
+  flex-shrink:0;
+}
+.life.gone{
+  background:transparent;
+  border:1px solid var(--crimson-dim);
+  box-shadow:none;
+  animation:heartbreak .4s ease forwards;
+}
+
+/* ── Right panel ── */
+.right{
+  flex:1;min-width:300px;
+  display:flex;flex-direction:column;align-items:center;gap:24px;
+}
+
+/* ── Hint ── */
+.hint-box{
+  width:100%;
+  padding:10px 18px;
+  border-left:2px solid var(--gold-dim);
+  background:rgba(200,160,80,.04);
+  font-family:'Lato',sans-serif;
+  font-weight:300;
+  font-size:.88rem;
+  font-style:italic;
+  color:var(--text-dim);
+  letter-spacing:.04em;
+  line-height:1.5;
+}
+
+/* ── Letter tiles ── */
+.word-row{
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+}
+
+.tile{
+  width:46px;height:56px;
+  border-radius:6px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:8px;
+  position:relative;
+  transition:border-color .3s,background .3s;
+  overflow:hidden;
+}
+.tile::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);
+}
+.tile-letter{
+  font-family:'DM Mono',monospace;
+  font-size:1.6rem;font-weight:500;
+  color:var(--text);
+  line-height:1;
+  transition:color .25s;
+}
+.tile-bar{
+  position:absolute;bottom:0;left:8px;right:8px;height:2px;
+  background:var(--border);
+  border-radius:1px;
+  transition:background .3s;
+}
+.tile.revealed{
+  background:rgba(200,160,80,.06);
+  border-color:var(--gold-dim);
+  animation:tileReveal .4s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.tile.revealed .tile-letter{color:var(--gold-hi)}
+.tile.revealed .tile-bar{background:var(--gold)}
+.tile.missed{
+  background:rgba(192,48,48,.08);
+  border-color:var(--crimson-dim);
+}
+.tile.missed .tile-letter{color:var(--crimson)}
+.tile.missed .tile-bar{background:var(--crimson)}
+
+/* ── Wrong letters ── */
+.wrong-panel{
+  width:100%;
+  padding:12px 18px;
+  background:rgba(192,48,48,.05);
+  border:1px solid rgba(192,48,48,.15);
+  border-radius:8px;
+}
+.wrong-label{
+  font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--text-dim);margin-bottom:6px;
+}
+.wrong-letters{
+  font-family:'DM Mono',monospace;
+  font-size:1.1rem;letter-spacing:.22em;
+  color:var(--crimson);
+  min-height:1.5rem;
+  text-shadow:0 0 8px rgba(192,48,48,.35);
+}
+
+/* ── Message ── */
+.message-box{
+  font-family:'Playfair Display',serif;
+  font-size:1.5rem;font-weight:700;
+  text-align:center;letter-spacing:.06em;
+  animation:fadeUp .4s ease;
+}
+.message-box.win{
+  color:var(--emerald-hi);
+  text-shadow:0 0 30px rgba(42,138,90,.4);
+  animation:winPulse 2s ease infinite;
+}
+.message-box.lose{
+  color:var(--crimson);
+  text-shadow:0 0 30px rgba(192,48,48,.5);
+}
+
+/* ── Keyboard ── */
+.keyboard{display:flex;flex-direction:column;gap:8px;align-items:center}
+.kb-row{display:flex;gap:7px}
+
+.key{
+  width:40px;height:42px;border-radius:6px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-family:'DM Mono',monospace;
+  font-size:.82rem;font-weight:500;
+  cursor:pointer;
+  position:relative;overflow:hidden;
+  transition:background .15s,border-color .15s,color .15s,transform .1s,box-shadow .15s;
+  box-shadow:0 3px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04);
+}
+.key::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.04) 0%,transparent 50%);
+  pointer-events:none;
+}
+.key:hover:not(:disabled){
+  background:var(--gold);
+  border-color:var(--gold-hi);
+  color:#1a1005;
+  transform:translateY(-3px);
+  box-shadow:0 6px 16px rgba(200,160,80,.3),inset 0 1px 0 rgba(255,255,255,.25);
+}
+.key:active:not(:disabled){transform:translateY(-1px)}
+.key:disabled{opacity:0;pointer-events:none}
+.key.hit{
+  background:rgba(42,138,90,.2);
+  border-color:var(--emerald);
+  color:var(--emerald-hi);
+  opacity:1;
+  box-shadow:0 0 10px rgba(42,138,90,.2),inset 0 1px 0 rgba(255,255,255,.04);
+  pointer-events:none;
+}
+.key.miss{
+  background:rgba(192,48,48,.15);
+  border-color:var(--crimson-dim);
+  color:var(--crimson);
+  opacity:1;
+  pointer-events:none;
+}
+
+/* ── New word button ── */
+.btn-new{
+  padding:12px 44px;
+  background:transparent;
+  border:1px solid var(--gold-dim);
+  border-radius:6px;
+  color:var(--gold);
+  font-family:'Playfair Display SC',serif;
+  font-size:.9rem;letter-spacing:.18em;
+  cursor:pointer;
+  position:relative;overflow:hidden;
+  transition:all .2s ease;
+}
+.btn-new::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(200,160,80,.07) 0%,transparent 100%);
+  pointer-events:none;
+}
+.btn-new:hover{
+  background:var(--gold);
+  border-color:var(--gold-hi);
+  color:#1a1005;
+  box-shadow:0 0 28px rgba(200,160,80,.25);
+  transform:translateY(-1px);
+}
+
+/* ── Credit ── */
+.credit{
+  margin-top:44px;
+  font-family:'Lato',sans-serif;
+  font-weight:300;font-size:.72rem;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:var(--gold-dim);
+  opacity:.6;
+  text-align:center;
+}
+.credit em{
+  font-style:normal;
+  color:var(--gold);
+  opacity:.85;
+}
+
+.shake{animation:shake .4s ease}
+
+/* Particles */
+.particle{
+  position:fixed;pointer-events:none;z-index:10;
+  width:4px;height:4px;border-radius:50%;
+}
+
+/* ── Race Mode ── */
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(200,160,80,.4)}70%{box-shadow:0 0 0 8px rgba(200,160,80,0)}}
+@keyframes raceReveal{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes countdown{0%{transform:scale(1.4);opacity:1}100%{transform:scale(.6);opacity:0}}
+
+#raceOverlay{
+  display:none;
+  position:fixed;inset:0;z-index:100;
+  background:rgba(4,2,6,.92);
+  backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;
+  flex-direction:column;
+  gap:20px;
+  animation:raceReveal .3s ease;
+}
+#raceOverlay.active{display:flex}
+
+.race-modal{
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:14px;
+  padding:36px 40px;
+  width:min(440px,92vw);
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 32px 80px rgba(0,0,0,.8);
+  position:relative;overflow:hidden;
+}
+.race-modal::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+}
+
+.race-title{
+  font-family:'Playfair Display SC',serif;
+  font-size:1.4rem;letter-spacing:.15em;
+  color:var(--gold-hi);
+  text-align:center;
+}
+.race-subtitle{
+  font-size:.75rem;letter-spacing:.25em;text-transform:uppercase;
+  color:var(--text-dim);text-align:center;
+}
+
+.race-input{
+  width:100%;
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--border2);
+  border-radius:8px;
+  padding:11px 16px;
+  color:var(--text);
+  font-family:'DM Mono',monospace;
+  font-size:.95rem;
+  letter-spacing:.1em;
+  outline:none;
+  text-transform:uppercase;
+  transition:border-color .2s;
+}
+.race-input::placeholder{color:var(--text-dim);text-transform:none;letter-spacing:.04em}
+.race-input:focus{border-color:var(--gold)}
+
+.race-btn{
+  width:100%;padding:12px;
+  background:var(--gold);
+  border:none;border-radius:8px;
+  color:#1a1005;
+  font-family:'Playfair Display SC',serif;
+  font-size:.9rem;letter-spacing:.15em;
+  cursor:pointer;
+  transition:all .2s;
+}
+.race-btn:hover{background:var(--gold-hi);transform:translateY(-1px)}
+.race-btn.secondary{
+  background:transparent;
+  border:1px solid var(--border2);
+  color:var(--text-dim);
+  font-family:'Lato',sans-serif;
+  font-size:.82rem;
+  letter-spacing:.08em;
+}
+.race-btn.secondary:hover{border-color:var(--gold-dim);color:var(--text)}
+.race-btn:disabled{opacity:.45;cursor:default;transform:none}
+
+.race-divider{
+  width:100%;display:flex;align-items:center;gap:12px;
+  color:var(--text-dim);font-size:.7rem;letter-spacing:.2em;
+}
+.race-divider::before,.race-divider::after{
+  content:'';flex:1;height:1px;background:var(--border);
+}
+
+.room-code-display{
+  font-family:'DM Mono',monospace;
+  font-size:2.2rem;font-weight:500;
+  letter-spacing:.35em;
+  color:var(--gold-hi);
+  background:rgba(200,160,80,.05);
+  border:1px solid var(--border2);
+  border-radius:10px;
+  padding:14px 28px;
+  text-align:center;
+  cursor:pointer;
+  transition:all .2s;
+  animation:pulse 2s infinite;
+}
+.room-code-display:hover{background:rgba(200,160,80,.1)}
+.room-code-hint{font-size:.7rem;color:var(--text-dim);letter-spacing:.15em;text-transform:uppercase}
+
+/* ── Race HUD (shown during race) ── */
+#raceHud{
+  display:none;
+  width:100%;max-width:980px;
+  margin-bottom:16px;
+}
+#raceHud.active{display:block}
+
+.race-hud-inner{
+  background:var(--panel);
+  border:1px solid var(--border2);
+  border-radius:10px;
+  padding:10px 20px;
+  display:flex;align-items:center;gap:16px;
+  flex-wrap:wrap;
+}
+.race-status-pill{
+  font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--emerald-hi);
+  padding:3px 10px;
+  border:1px solid var(--emerald);
+  border-radius:12px;
+  background:rgba(42,138,90,.08);
+}
+.race-room-id{
+  font-family:'DM Mono',monospace;
+  font-size:.8rem;color:var(--text-dim);
+  letter-spacing:.1em;
+}
+.race-room-id span{color:var(--gold);margin-left:4px}
+.race-players-row{
+  display:flex;gap:8px;flex-wrap:wrap;flex:1;justify-content:flex-end;
+}
+.race-player-chip{
+  font-size:.72rem;font-family:'DM Mono',monospace;
+  padding:3px 10px;border-radius:12px;
+  border:1px solid var(--border);
+  color:var(--text-dim);
+  background:rgba(255,255,255,.02);
+  display:flex;align-items:center;gap:5px;
+  transition:all .3s;
+  white-space:nowrap;
+}
+.race-player-chip.me{border-color:var(--gold-dim);color:var(--gold)}
+.race-player-chip.finished{border-color:var(--emerald);color:var(--emerald-hi)}
+.race-player-chip.lost{border-color:var(--crimson-dim);color:var(--crimson)}
+.race-player-chip .pip{
+  width:6px;height:6px;border-radius:50%;
+  background:currentColor;flex-shrink:0;
+}
+.race-progress{
+  font-size:.65rem;color:inherit;opacity:.7;
+}
+
+.btn-race{
+  padding:10px 28px;
+  background:transparent;
+  border:1px solid var(--gold-dim);
+  border-radius:6px;
+  color:var(--gold);
+  font-family:'Playfair Display SC',serif;
+  font-size:.82rem;letter-spacing:.16em;
+  cursor:pointer;
+  transition:all .2s;
+}
+.btn-race:hover{
+  background:rgba(200,160,80,.08);
+  border-color:var(--gold);
+}
+
+/* Countdown splash */
+#countdownSplash{
+  display:none;
+  position:fixed;inset:0;z-index:200;
+  align-items:center;justify-content:center;
+  pointer-events:none;
+}
+#countdownSplash.active{display:flex}
+#countdownNum{
+  font-family:'Playfair Display SC',serif;
+  font-size:min(26vw,220px);
+  color:var(--gold-hi);
+  text-shadow:0 0 80px rgba(200,160,80,.6);
+  animation:countdown .9s ease forwards;
+}
+
+/* Result banner */
+.race-result-banner{
+  width:100%;max-width:980px;
+  padding:14px 24px;
+  border-radius:10px;
+  font-family:'Playfair Display',serif;
+  font-size:1.1rem;font-weight:700;
+  text-align:center;
+  letter-spacing:.06em;
+  animation:fadeUp .4s ease;
+}
+.race-result-banner.winner{
+  background:rgba(42,138,90,.12);border:1px solid var(--emerald);
+  color:var(--emerald-hi);
+}
+.race-result-banner.loser{
+  background:rgba(192,48,48,.08);border:1px solid var(--crimson-dim);
+  color:var(--crimson);
+}
+.race-result-banner.draw{
+  background:rgba(200,160,80,.08);border:1px solid var(--gold-dim);
+  color:var(--gold-hi);
+}
+
+.race-status-msg{
+  font-size:.8rem;color:var(--text-dim);letter-spacing:.08em;
+  text-align:center;
+}
+
+/* Waiting dots */
+@keyframes waitDot{0%,80%,100%{opacity:.2}40%{opacity:1}}
+.wait-dot{display:inline-block;animation:waitDot 1.4s infinite}
+.wait-dot:nth-child(2){animation-delay:.2s}
+.wait-dot:nth-child(3){animation-delay:.4s}
+</style>
+</head>
+<body>
+
+<canvas id="starCanvas"></canvas>
+<div class="fog"></div>
+
+<div class="page">
+
+  <header>
+    <div class="title-ornament">
+      <div class="ornament-line"></div>
+      <div class="ornament-diamond"></div>
+      <h1>Hangman</h1>
+      <div class="ornament-diamond"></div>
+      <div class="ornament-line r"></div>
+    </div>
+    <p class="subtitle">A Game of Letters &amp; Fate</p>
+    <div class="score-row">
+      <div class="score-pill">Wins <span id="scoreW">0</span></div>
+      <div class="score-pill">Losses <span id="scoreL">0</span></div>
+      <div class="score-pill">Words <span id="scoreT">0</span></div>
+    </div>
+  </header>
+
+  <div class="arena">
+
+    <div class="gallows-card" id="gallowsCard">
+      <canvas id="gc" width="240" height="260"></canvas>
+      <div class="lives-bar" id="livesBar"></div>
+    </div>
+
+    <div class="right">
+      <div class="hint-box" id="hintBox"></div>
+      <div class="word-row" id="wordRow"></div>
+      <div class="wrong-panel">
+        <div class="wrong-label">Wrong guesses</div>
+        <div class="wrong-letters" id="wrongLetters">&nbsp;</div>
+      </div>
+      <div id="msgArea"></div>
+      <div class="keyboard" id="keyboard"></div>
+      <button class="btn-new" onclick="newGame()">New Word</button>
+      <button class="btn-race" onclick="openRaceMenu()">⚔ Race Mode</button>
+    </div>
+
+  </div>
+
+  <div class="credit">Made with care by <em>Hansel</em></div>
+
+</div>
+
+<!-- Race HUD (shown above arena during race) -->
+<div id="raceHud">
+  <div class="race-hud-inner">
+    <div class="race-status-pill" id="raceStatusPill">RACING</div>
+    <div class="race-room-id">Room<span id="hudRoomCode">—</span></div>
+    <div class="race-players-row" id="racePlayersRow"></div>
+  </div>
+</div>
+
+<!-- Race Modal Overlay -->
+<div id="raceOverlay">
+  <div class="race-modal" id="raceModal">
+    <!-- content injected by JS -->
+  </div>
+</div>
+
+<!-- Countdown Splash -->
+<div id="countdownSplash">
+  <div id="countdownNum"></div>
+</div>
+
+<!-- Race Result Banner (injected below arena) -->
+<div id="raceBannerWrap" style="width:100%;max-width:980px;position:relative;z-index:2;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ── Starfield ── */
+(function(){
+  const cv=document.getElementById('starCanvas');
+  const cx=cv.getContext('2d');
+  function resize(){cv.width=innerWidth;cv.height=innerHeight}
+  resize();window.addEventListener('resize',resize);
+  const stars=Array.from({length:180},()=>({
+    x:Math.random(),y:Math.random(),
+    r:Math.random()*.9+.2,
+    a:Math.random(),da:(Math.random()-.5)*.003
+  }));
+  function frame(){
+    cx.clearRect(0,0,cv.width,cv.height);
+    for(const s of stars){
+      s.a=Math.max(.05,Math.min(1,s.a+s.da));
+      if(s.a<=.05||s.a>=1)s.da*=-1;
+      cx.beginPath();
+      cx.arc(s.x*cv.width,s.y*cv.height,s.r,0,Math.PI*2);
+      cx.fillStyle=`rgba(240,220,160,${s.a*.5})`;
+      cx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ── Word bank ── */
+const WORDS = [
+  { word: "CABINET", hint: "Where you store dishes or files" },
+  { word: "CAPTAIN", hint: "Leader of a ship or team" },
+  { word: "CHICKEN", hint: "Farm bird, also a meal" },
+  { word: "DIAMOND", hint: "Precious stone, or a card suit" },
+  { word: "ELEMENT", hint: "Building block of matter" },
+  { word: "FACTORY", hint: "Where things are manufactured" },
+  { word: "FANTASY", hint: "Imaginative fiction genre" },
+  { word: "GARBAGE", hint: "Trash or rubbish" },
+  { word: "GRANITE", hint: "Hard igneous rock" },
+  { word: "HARVEST", hint: "Gathering of crops" },
+  { word: "HEALTHY", hint: "In good physical condition" },
+  { word: "HISTORY", hint: "The study of past events" },
+  { word: "JOURNEY", hint: "A long trip or adventure" },
+  { word: "KITCHEN", hint: "Room where food is cooked" },
+  { word: "LANTERN", hint: "Portable light source" },
+  { word: "LIBRARY", hint: "Place full of books" },
+  { word: "MACHINE", hint: "A mechanical device" },
+  { word: "MORNING", hint: "The early part of the day" },
+  { word: "MYSTERY", hint: "Something unknown or secret" },
+  { word: "NATURAL", hint: "Found in nature" },
+  { word: "NETWORK", hint: "A system of connected things" },
+  { word: "NOTHING", hint: "Not anything at all" },
+  { word: "ANOTHER", hint: "One more; an additional one" },
+  { word: "OPINION", hint: "A personal point of view" },
+  { word: "OUTSIDE", hint: "Beyond the walls or borders" },
+  { word: "PACKAGE", hint: "A wrapped parcel or bundle" },
+  { word: "PAINTED", hint: "Covered with color or pigment" },
+  { word: "PERFECT", hint: "Without any flaws" },
+  { word: "PICTURE", hint: "A drawing or photograph" },
+  { word: "PIONEER", hint: "An early settler or trailblazer" },
+  { word: "PIRATES", hint: "Sea robbers of legend" },
+  { word: "PLASTIC", hint: "A synthetic moldable material" },
+  { word: "PLAYING", hint: "Engaging in a game or sport" },
+  { word: "POPULAR", hint: "Liked by many people" },
+  { word: "POSSESS", hint: "To own or have something" },
+  { word: "POSTMAN", hint: "One who delivers letters" },
+  { word: "PRESENT", hint: "A gift, or being here now" },
+  { word: "PROBLEM", hint: "A difficult situation to solve" },
+  { word: "PROTECT", hint: "To keep something safe" },
+  { word: "PUMPKIN", hint: "Orange Halloween squash" },
+  { word: "PYRAMID", hint: "Ancient Egyptian structure" },
+  { word: "QUIETLY", hint: "Without making much noise" },
+  { word: "RAINBOW", hint: "Colorful arc after rain" },
+  { word: "REALIZE", hint: "To become aware of something" },
+  { word: "REVENGE", hint: "Retaliation for a wrong done" },
+  { word: "ROUTINE", hint: "A regular sequence of actions" },
+  { word: "SCIENCE", hint: "The study of the natural world" },
+  { word: "SHELTER", hint: "Protection from the weather" },
+  { word: "SINGING", hint: "Producing musical sounds with voice" },
+  { word: "SOLDIER", hint: "A person in the military" },
+  { word: "STOMACH", hint: "Organ that digests food" },
+  { word: "STRANGE", hint: "Unusual or peculiar" },
+  { word: "STUDENT", hint: "Someone who is learning" },
+  { word: "SUBJECT", hint: "A topic studied in school" },
+  { word: "SUNRISE", hint: "Dawn, the start of day" },
+  { word: "SURFACE", hint: "The outside or top layer" },
+  { word: "SUSPEND", hint: "To hang or temporarily stop" },
+  { word: "THUNDER", hint: "Loud sound during a storm" },
+  { word: "TONIGHT", hint: "This evening" },
+  { word: "TRAFFIC", hint: "Vehicles moving on roads" },
+  { word: "TROUBLE", hint: "Difficulty or a problematic situation" },
+  { word: "TSUNAMI", hint: "Massive ocean wave from earthquake" },
+  { word: "TURMOIL", hint: "A state of confusion or disorder" },
+  { word: "TWINKLE", hint: "To shine with a flickering light" },
+  { word: "UNIFORM", hint: "A set of standard clothing" },
+  { word: "UNUSUAL", hint: "Not common or typical" },
+  { word: "VILLAGE", hint: "A small settlement" },
+  { word: "VOLCANO", hint: "A mountain that erupts lava" },
+  { word: "WARRIOR", hint: "A brave fighter or soldier" },
+  { word: "WEATHER", hint: "Atmospheric conditions outside" },
+  { word: "WEDDING", hint: "A marriage ceremony" },
+  { word: "WESTERN", hint: "Relating to the west" },
+  { word: "WHISPER", hint: "To speak very softly" },
+  { word: "WINDOWS", hint: "Glass panes in a wall" },
+  { word: "WITNESS", hint: "Someone who sees an event" },
+  { word: "WONDERS", hint: "Marvels that inspire awe" },
+  { word: "YOUNGER", hint: "Less old in age" },
+  { word: "JEALOUS", hint: "Feeling envy toward someone" },
+  { word: "JUMPING", hint: "Leaping off the ground" },
+  { word: "BALANCE", hint: "Steady, equal distribution of weight" },
+  { word: "BLANKET", hint: "Warm covering for a bed" },
+  { word: "BROTHER", hint: "A male sibling" },
+  { word: "CAMPING", hint: "Sleeping outdoors in a tent" },
+  { word: "CANDIES", hint: "Sweet confections" },
+  { word: "CAPTURE", hint: "To catch or seize something" },
+  { word: "CARTOON", hint: "Animated show or comic drawing" },
+  { word: "ABSENCE", hint: "Not being present" },
+  { word: "ACADEMY", hint: "A school or learned society" },
+  { word: "ACCOUNT", hint: "A record of money or events" },
+  { word: "ACHIEVE", hint: "To successfully reach a goal" },
+  { word: "ADDRESS", hint: "Where you live, or a speech" },
+  { word: "ANCIENT", hint: "Very old, from long ago" },
+  { word: "AUCTION", hint: "A sale where bidders compete" },
+  { word: "BENEATH", hint: "Directly under something" },
+  { word: "BICYCLE", hint: "Two-wheeled pedal vehicle" },
+  { word: "BLOSSOM", hint: "A flower, or to flourish" },
+  { word: "BURRITO", hint: "A wrapped Mexican food" },
+  { word: "CLIMATE", hint: "Long-term weather patterns of a region" },
+  { word: "CLOTHES", hint: "Garments you wear" },
+  { word: "CHAPTER", hint: "A section of a book" },
+  { word: "CHIMNEY", hint: "A flue for smoke to escape" },
+  { word: "CIRCUIT", hint: "A closed loop of electricity" },
+  { word: "CITIZEN", hint: "A legal member of a country" },
+  { word: "CLUSTER", hint: "A group of similar things together" },
+  { word: "COMFORT", hint: "A state of ease and contentment" },
+  { word: "COMPASS", hint: "A tool that points north" },
+  { word: "COMPETE", hint: "To strive against others" },
+  { word: "COMPLEX", hint: "Made of many interconnected parts" },
+  { word: "CONCEAL", hint: "To hide something from sight" },
+  { word: "CONNECT", hint: "To join two things together" },
+  { word: "CONTENT", hint: "Satisfied, or what something contains" },
+  { word: "CONTROL", hint: "To have power over something" },
+  { word: "CONVERT", hint: "To change from one form to another" },
+  { word: "COURAGE", hint: "Bravery in the face of fear" },
+  { word: "CRYSTAL", hint: "A clear, structured mineral" },
+  { word: "CURIOUS", hint: "Eager to learn or know more" },
+  { word: "CURTAIN", hint: "Fabric hanging over a window" },
+  { word: "CYNICAL", hint: "Distrustful of others motives" },
+  { word: "DECLARE", hint: "To announce officially" },
+  { word: "DEFENSE", hint: "Protection against attack" },
+  { word: "DELIVER", hint: "To bring something to a destination" },
+  { word: "DESERVE", hint: "To be worthy of something" },
+  { word: "DISCUSS", hint: "To talk about a topic" },
+  { word: "DISPLAY", hint: "To show something publicly" },
+  { word: "DISTANT", hint: "Far away in space or time" },
+  { word: "DOLPHIN", hint: "A smart, playful ocean mammal" },
+  { word: "DOORWAY", hint: "The opening of a door" },
+  { word: "DYNASTY", hint: "A line of rulers from one family" },
+  { word: "ECLIPSE", hint: "When one celestial body blocks another" },
+  { word: "EMPEROR", hint: "Ruler of an empire" },
+  { word: "ENCHANT", hint: "To put under a magical spell" },
+  { word: "ENDLESS", hint: "Having no end; infinite" },
+  { word: "EPISODE", hint: "One installment of a series" },
+  { word: "EXAMINE", hint: "To inspect carefully" },
+  { word: "EXAMPLE", hint: "A sample that illustrates a point" },
+  { word: "EXPLODE", hint: "To burst with great force" },
+  { word: "EXPLORE", hint: "To travel and discover new places" },
+  { word: "EXPRESS", hint: "To put thoughts into words" },
+  { word: "EXTREME", hint: "Very intense or far from normal" },
+  { word: "FAILURE", hint: "Lack of success" },
+  { word: "FASHION", hint: "Popular style of clothing or trends" },
+  { word: "FEATHER", hint: "Light covering on a bird" },
+  { word: "FICTION", hint: "Stories that are not real" },
+  { word: "FIGHTER", hint: "Someone who battles or competes" },
+  { word: "FINALLY", hint: "At last, after a long time" },
+  { word: "FLAVORS", hint: "Distinct tastes of food or drink" },
+  { word: "FORESTS", hint: "Large areas covered in trees" },
+  { word: "FORTUNE", hint: "Great wealth, or ones destiny" },
+  { word: "FORWARD", hint: "Toward the front or future" },
+  { word: "FREEDOM", hint: "The state of being free" },
+  { word: "FRIENDS", hint: "People you enjoy spending time with" },
+  { word: "GENERAL", hint: "A high military rank" },
+  { word: "GENUINE", hint: "Real and authentic, not fake" },
+  { word: "GESTURE", hint: "A movement expressing a feeling" },
+  { word: "GLACIAL", hint: "Relating to glaciers; extremely slow" },
+  { word: "GLIMMER", hint: "A faint or flickering light" },
+  { word: "GLITTER", hint: "Tiny sparkling particles" },
+  { word: "GLUCOSE", hint: "A simple sugar, energy for the body" },
+  { word: "GRAVITY", hint: "The force that pulls things down" },
+  { word: "GROCERY", hint: "A store that sells food" },
+  { word: "HABITAT", hint: "The natural home of an animal" },
+  { word: "HARMFUL", hint: "Causing damage or injury" },
+  { word: "HARMONY", hint: "A pleasing combination of sounds" },
+  { word: "HEIGHTS", hint: "High places; elevation above ground" },
+  { word: "HELPFUL", hint: "Giving aid or assistance" },
+  { word: "HEROISM", hint: "Brave and noble conduct" },
+  { word: "HIGHWAY", hint: "A main public road" },
+  { word: "HORIZON", hint: "Where the earth meets the sky" },
+  { word: "HOSTAGE", hint: "A person held captive" },
+  { word: "HUNTING", hint: "Tracking and catching wild animals" },
+  { word: "IMAGINE", hint: "To form a mental picture" },
+  { word: "IMPROVE", hint: "To make something better" },
+  { word: "INCLUDE", hint: "To make part of a group" },
+  { word: "INSPIRE", hint: "To motivate or fill with creativity" },
+  { word: "INSTEAD", hint: "As an alternative to" },
+  { word: "INTEGER", hint: "A whole number, not a fraction" },
+  { word: "INTENSE", hint: "Very strong or extreme" },
+  { word: "ISOLATE", hint: "To set apart from others" },
+  { word: "JAVELIN", hint: "A spear thrown in athletics" },
+  { word: "KINGDOM", hint: "A land ruled by a king or queen" },
+  { word: "LABELED", hint: "Marked with a tag or name" },
+  { word: "LARGELY", hint: "To a great extent; mostly" },
+  { word: "LAYERED", hint: "Having multiple levels or strata" },
+  { word: "LEADING", hint: "Being in front or guiding others" },
+  { word: "LEATHER", hint: "Material made from animal hide" },
+  { word: "LEGENDS", hint: "Famous stories or legendary people" },
+  { word: "LIBERTY", hint: "Freedom from control or restriction" },
+  { word: "LIMITED", hint: "Restricted in amount or scope" },
+  { word: "LOGICAL", hint: "Based on clear reasoning" },
+  { word: "LOYALTY", hint: "Faithful devotion to someone" },
+  { word: "MAGICAL", hint: "Having the power of magic" },
+  { word: "MARKERS", hint: "Objects used to mark a position" },
+  { word: "MARRIED", hint: "United in marriage" },
+  { word: "MARBLES", hint: "Small glass spheres used in games" },
+  { word: "MARTIAL", hint: "Related to war or combat" },
+  { word: "MEDICAL", hint: "Relating to health and medicine" },
+  { word: "MERCURY", hint: "Closest planet to the sun, or a metal" },
+  { word: "MESSAGE", hint: "A piece of written or spoken information" },
+  { word: "MINERAL", hint: "A natural inorganic substance" },
+  { word: "MIRACLE", hint: "An extraordinary, unexplained event" },
+  { word: "MISSION", hint: "An important task or assignment" },
+  { word: "MIXTURE", hint: "A combination of different things" },
+  { word: "MONARCH", hint: "A king, queen, or emperor" },
+  { word: "MONSTER", hint: "A frightening imaginary creature" },
+  { word: "MUSCLES", hint: "Tissues that power movement" },
+  { word: "MUSICAL", hint: "Relating to music" },
+  { word: "NERVOUS", hint: "Anxious or easily startled" },
+  { word: "NEUTRAL", hint: "Not taking sides; impartial" },
+  { word: "NUCLEAR", hint: "Relating to atomic energy" },
+  { word: "NURTURE", hint: "To care for and encourage growth" },
+  { word: "OBSERVE", hint: "To watch carefully" },
+  { word: "OBVIOUS", hint: "Easily seen or understood" },
+  { word: "OPERATE", hint: "To work or control a machine" },
+  { word: "ORCHARD", hint: "A place where fruit trees grow" },
+  { word: "ORIGINS", hint: "The starting point of something" },
+  { word: "OUTCOME", hint: "The result of an action" },
+  { word: "OUTLAST", hint: "To survive longer than others" },
+  { word: "OVERDUE", hint: "Past the expected date" },
+  { word: "OVERLAP", hint: "When two things cover part of each other" },
+  { word: "PATTERN", hint: "A repeated design or sequence" },
+  { word: "PAYMENT", hint: "Money given in exchange for something" },
+  { word: "PEASANT", hint: "A poor rural farm worker" },
+  { word: "PERCENT", hint: "Parts per hundred" },
+  { word: "PHYSICS", hint: "The science of matter and energy" },
+  { word: "PLANETS", hint: "Large bodies orbiting a star" },
+  { word: "PLANTED", hint: "Placed in soil to grow" },
+  { word: "PLAYERS", hint: "Those who participate in a game" },
+  { word: "PLUNDER", hint: "To steal by force" },
+  { word: "PORTION", hint: "A part or share of something" },
+  { word: "POVERTY", hint: "The state of being very poor" },
+  { word: "PREDICT", hint: "To say what will happen in advance" },
+  { word: "PREPARE", hint: "To get ready in advance" },
+  { word: "PRIVACY", hint: "Freedom from being observed" },
+  { word: "PROCESS", hint: "A series of steps to complete a task" },
+  { word: "PRODUCT", hint: "Something produced or made" },
+  { word: "PROJECT", hint: "A planned undertaking" },
+  { word: "PROMISE", hint: "A commitment to do something" },
+  { word: "PROPOSE", hint: "To put forward an idea" },
+  { word: "PROTEST", hint: "To object or demonstrate against something" },
+  { word: "PUBLISH", hint: "To release written work publicly" },
+  { word: "PURPOSE", hint: "The reason something exists" },
+  { word: "QUALIFY", hint: "To meet the requirements" },
+  { word: "QUARTER", hint: "One fourth of something" },
+  { word: "RADIANT", hint: "Glowing with light or happiness" },
+  { word: "RAPIDLY", hint: "At great speed" },
+  { word: "RECEIVE", hint: "To get or be given something" },
+  { word: "REQUIRE", hint: "To need something" },
+  { word: "RESCUED", hint: "Saved from danger" },
+  { word: "RESPECT", hint: "High regard for someone" },
+  { word: "RESULTS", hint: "Outcomes or conclusions" },
+  { word: "RETREAT", hint: "To move back or withdraw" },
+  { word: "ROMANCE", hint: "A love story or feeling of love" },
+  { word: "ROYALTY", hint: "Members of a royal family" },
+  { word: "SADNESS", hint: "A feeling of sorrow" },
+  { word: "SATISFY", hint: "To meet a need or desire" },
+  { word: "SCENERY", hint: "The natural features of a landscape" },
+  { word: "SCHOLAR", hint: "A highly educated person" },
+  { word: "SCRATCH", hint: "To scrape lightly with nails" },
+  { word: "SEGMENT", hint: "A portion cut from a whole" },
+  { word: "SERVANT", hint: "One who serves another" },
+  { word: "SILENCE", hint: "Complete absence of sound" },
+  { word: "SIMILAR", hint: "Alike but not identical" },
+  { word: "SLENDER", hint: "Thin and graceful" },
+  { word: "SOCIETY", hint: "A community of people" },
+  { word: "SPECIES", hint: "A group of similar living things" },
+  { word: "STADIUM", hint: "A large arena for sports events" },
+  { word: "STELLAR", hint: "Relating to stars; exceptional" },
+  { word: "STORAGE", hint: "A place to keep things" },
+  { word: "STORIES", hint: "Narratives or levels of a building" },
+  { word: "STRETCH", hint: "To extend in length" },
+  { word: "SUCCESS", hint: "Achieving a goal" },
+  { word: "SUGGEST", hint: "To put forward an idea" },
+  { word: "SUNBURN", hint: "Skin damage from too much sun" },
+  { word: "SUPPORT", hint: "To hold up or assist" },
+  { word: "SUPREME", hint: "Highest in rank or authority" },
+  { word: "SURGEON", hint: "A doctor who performs operations" },
+  { word: "SURVIVE", hint: "To remain alive through difficulty" },
+  { word: "SUSPECT", hint: "Someone thought to be guilty" },
+  { word: "SYMBOLS", hint: "Signs that represent ideas" },
+  { word: "TACTICS", hint: "Planned actions to achieve a goal" },
+  { word: "TEACHER", hint: "Someone who educates others" },
+  { word: "THEATER", hint: "A place for performances" },
+  { word: "THINKER", hint: "Someone who reasons deeply" },
+  { word: "THOUGHT", hint: "An idea formed in the mind" },
+  { word: "THROUGH", hint: "Moving in one side and out the other" },
+  { word: "TIMBERS", hint: "Large pieces of wood for building" },
+  { word: "TOURISM", hint: "Traveling to visit places of interest" },
+  { word: "TRACKED", hint: "Followed the path of" },
+  { word: "TRAINED", hint: "Taught a skill through practice" },
+  { word: "TRIUMPH", hint: "A great victory or achievement" },
+  { word: "TRUSTED", hint: "Believed to be reliable" },
+  { word: "UNKNOWN", hint: "Not known or identified" },
+  { word: "UNRAVEL", hint: "To undo or solve something tangled" },
+  { word: "UPGRADE", hint: "To improve to a better version" },
+  { word: "VACANCY", hint: "An unfilled position or empty room" },
+  { word: "VIBRANT", hint: "Full of energy and color" },
+  { word: "VICTORY", hint: "Winning a battle or competition" },
+  { word: "VISIBLE", hint: "Able to be seen" },
+  { word: "VISITOR", hint: "Someone who comes to a place" },
+  { word: "VOLTAGE", hint: "The force of an electrical current" },
+  { word: "WARFARE", hint: "Armed conflict between groups" },
+  { word: "WEALTHY", hint: "Having a great deal of money" },
+  { word: "WEBSITE", hint: "A location on the internet" },
+  { word: "WELCOME", hint: "A greeting to an arriving guest" },
+  { word: "WILLING", hint: "Ready and eager to do something" },
+  { word: "WISTFUL", hint: "Feeling a vague longing or sadness" },
+  { word: "WITHOUT", hint: "Not having something" },
+  { word: "WORKING", hint: "Doing a job or being functional" },
+  { word: "WORSHIP", hint: "To show reverence to a deity" },
+  { word: "WRITERS", hint: "People who compose texts" },
+  { word: "ZEALOUS", hint: "Passionately devoted to a cause" },
+];
+
+const BANK = WORDS.filter(w=>w.word.length===7);
+const MAX_WRONG=7;
+const KB_ROWS=["QWERTYUIOP","ASDFGHJKL","ZXCVBNM"];
+
+let secret="",guessed=new Set(),wrongCount=0,over=false;
+let wins=0,losses=0,total=0;
+let lastHits=new Set();
+
+/* ── Canvas gallows ── */
+const cv=document.getElementById('gc');
+const cx=cv.getContext('2d');
+
+function drawGallows(w){
+  cx.clearRect(0,0,cv.width,cv.height);
+  cx.lineCap='round';cx.lineJoin='round';
+
+  // ── Gallows structure ──
+  // Base platform with shadow
+  cx.strokeStyle='#3d2508';cx.lineWidth=7;
+  cx.beginPath();cx.moveTo(14,246);cx.lineTo(210,246);cx.stroke();
+  // Post shadow
+  cx.strokeStyle='#3d2508';cx.lineWidth=7;
+  cx.beginPath();cx.moveTo(66,246);cx.lineTo(66,18);cx.stroke();
+  // Post highlight
+  cx.strokeStyle='#6b450f';cx.lineWidth=4;
+  cx.beginPath();cx.moveTo(64,246);cx.lineTo(64,18);cx.stroke();
+  // Diagonal brace
+  cx.strokeStyle='#4a2e0a';cx.lineWidth=4;
+  cx.beginPath();cx.moveTo(66,72);cx.lineTo(100,18);cx.stroke();
+  cx.strokeStyle='#5a3810';cx.lineWidth=2;
+  cx.beginPath();cx.moveTo(65,72);cx.lineTo(99,18);cx.stroke();
+  // Top beam shadow
+  cx.strokeStyle='#3d2508';cx.lineWidth=7;
+  cx.beginPath();cx.moveTo(64,18);cx.lineTo(168,18);cx.stroke();
+  // Top beam highlight
+  cx.strokeStyle='#6b450f';cx.lineWidth=4;
+  cx.beginPath();cx.moveTo(64,18);cx.lineTo(168,18);cx.stroke();
+  // Noose rope (twisted look)
+  cx.strokeStyle='#a07830';cx.lineWidth=3;
+  cx.beginPath();cx.moveTo(168,18);cx.lineTo(168,52);cx.stroke();
+  cx.strokeStyle='#7a5820';cx.lineWidth=1.5;
+  cx.setLineDash([3,3]);
+  cx.beginPath();cx.moveTo(170,18);cx.lineTo(170,52);cx.stroke();
+  cx.setLineDash([]);
+  // Noose loop
+  cx.strokeStyle='#a07830';cx.lineWidth=2.5;
+  cx.beginPath();cx.ellipse(168,55,6,4,0,0,Math.PI*2);cx.stroke();
+
+  if(w===0)return;
+
+  const dead = w>=MAX_WRONG;
+  const col  = dead ? '#c03030' : '#c8a050';
+  const dim  = dead ? '#7a1a1a' : '#6a4e20';
+  if(dead){cx.shadowBlur=18;cx.shadowColor='rgba(192,48,48,.55)';}
+
+  // ── 1: Head ──
+  if(w>=1){
+    // skull fill
+    cx.fillStyle = dead ? 'rgba(192,48,48,.12)' : 'rgba(200,160,80,.07)';
+    cx.beginPath();cx.arc(168,72,18,0,Math.PI*2);cx.fill();
+    // head outline
+    cx.strokeStyle=col;cx.lineWidth=2.5;
+    cx.beginPath();cx.arc(168,72,18,0,Math.PI*2);cx.stroke();
+    // neck connector
+    cx.strokeStyle=col;cx.lineWidth=2;
+    cx.beginPath();cx.moveTo(168,54);cx.lineTo(168,56);cx.stroke();
+    // hair tuft (alive only)
+    if(!dead){
+      cx.strokeStyle='#c8a050';cx.lineWidth=1.5;
+      [[-6,-2],[-3,-4],[0,-5],[3,-4],[6,-2]].forEach(([dx,dy])=>{
+        cx.beginPath();cx.moveTo(168+dx,54);cx.lineTo(168+dx,54+dy);cx.stroke();
+      });
+    }
+  }
+
+  // ── 2: Torso ──
+  if(w>=2){
+    cx.strokeStyle=col;cx.lineWidth=3;
+    // curved torso with bezier
+    cx.beginPath();
+    cx.moveTo(168,90);
+    cx.bezierCurveTo(165,112,166,130,168,158);
+    cx.stroke();
+    // rib lines (alive)
+    if(!dead){
+      cx.strokeStyle=dim;cx.lineWidth=1;
+      for(let i=0;i<3;i++){
+        const y=100+i*12;
+        cx.beginPath();cx.moveTo(160,y);cx.lineTo(176,y);cx.stroke();
+      }
+    }
+  }
+
+  // ── 3: Left arm ──
+  if(w>=3){
+    cx.strokeStyle=col;cx.lineWidth=2.5;
+    cx.beginPath();
+    cx.moveTo(167,100);
+    cx.quadraticCurveTo(148,118,132,136);
+    cx.stroke();
+    // left hand fingers
+    cx.lineWidth=1.5;
+    [[-4,-2],[-2,-4],[1,-5],[4,-3]].forEach(([dx,dy])=>{
+      cx.beginPath();cx.moveTo(132,136);cx.lineTo(132+dx,136+dy+6);cx.stroke();
+    });
+  }
+
+  // ── 4: Right arm ──
+  if(w>=4){
+    cx.strokeStyle=col;cx.lineWidth=2.5;
+    cx.beginPath();
+    cx.moveTo(169,100);
+    cx.quadraticCurveTo(186,118,202,134);
+    cx.stroke();
+    // right hand fingers
+    cx.lineWidth=1.5;
+    [[-4,-3],[-1,-5],[2,-5],[5,-3]].forEach(([dx,dy])=>{
+      cx.beginPath();cx.moveTo(202,134);cx.lineTo(202+dx,134+dy+6);cx.stroke();
+    });
+  }
+
+  // ── 5: Left leg ──
+  if(w>=5){
+    cx.strokeStyle=col;cx.lineWidth=2.5;
+    cx.beginPath();
+    cx.moveTo(167,158);
+    cx.quadraticCurveTo(154,185,142,210);
+    cx.stroke();
+    // left foot
+    cx.lineWidth=2;
+    cx.beginPath();cx.moveTo(142,210);cx.lineTo(128,214);cx.stroke();
+    cx.beginPath();cx.moveTo(128,214);cx.lineTo(126,210);cx.stroke();
+  }
+
+  // ── 6: Right leg ──
+  if(w>=6){
+    cx.strokeStyle=col;cx.lineWidth=2.5;
+    cx.beginPath();
+    cx.moveTo(169,158);
+    cx.quadraticCurveTo(180,185,190,210);
+    cx.stroke();
+    // right foot
+    cx.lineWidth=2;
+    cx.beginPath();cx.moveTo(190,210);cx.lineTo(204,214);cx.stroke();
+    cx.beginPath();cx.moveTo(204,214);cx.lineTo(206,210);cx.stroke();
+  }
+
+  // ── 7: Face (dead) ──
+  if(w>=7){
+    cx.shadowBlur=0;
+    cx.strokeStyle='#c03030';cx.lineWidth=2;
+    // X left eye
+    cx.beginPath();cx.moveTo(158,65);cx.lineTo(164,71);cx.stroke();
+    cx.beginPath();cx.moveTo(164,65);cx.lineTo(158,71);cx.stroke();
+    // X right eye
+    cx.beginPath();cx.moveTo(172,65);cx.lineTo(178,71);cx.stroke();
+    cx.beginPath();cx.moveTo(178,65);cx.lineTo(172,71);cx.stroke();
+    // open sad mouth
+    cx.strokeStyle='#c03030';cx.lineWidth=2;
+    cx.beginPath();cx.arc(168,82,7,0.15*Math.PI,0.85*Math.PI,true);cx.stroke();
+    // teeth
+    cx.strokeStyle='rgba(200,80,80,.6)';cx.lineWidth=1;
+    for(let i=0;i<4;i++){
+      const x=162+i*4;
+      cx.beginPath();cx.moveTo(x,80);cx.lineTo(x,83);cx.stroke();
+    }
+  } else if(w>=1){
+    // alive face expressions that get worse
+    cx.strokeStyle=col;cx.lineWidth=1.8;
+    // eyes (dots)
+    [161,175].forEach(ex=>{
+      cx.beginPath();cx.arc(ex,68,w>=5?2.5:2,0,Math.PI*2);
+      cx.fillStyle=col;cx.fill();
+    });
+    // mouth: smile → straight → frown
+    cx.beginPath();
+    if(w<=2){
+      // slight smile
+      cx.arc(168,78,5,0.1*Math.PI,0.9*Math.PI,false);
+    } else if(w<=4){
+      // straight line
+      cx.moveTo(163,78);cx.lineTo(173,78);
+    } else {
+      // frown
+      cx.arc(168,83,6,1.1*Math.PI,1.9*Math.PI,false);
+    }
+    cx.stroke();
+    // sweat drop at 5+
+    if(w>=5){
+      cx.fillStyle='rgba(100,160,220,.7)';
+      cx.beginPath();cx.arc(182,67,2.5,0,Math.PI*2);cx.fill();
+      cx.beginPath();cx.moveTo(182,64.5);cx.lineTo(179,69);cx.lineTo(185,69);cx.closePath();cx.fill();
+    }
+  }
+
+  cx.shadowBlur=0;
+}
+
+/* ── Lives ── */
+function renderLives(){
+  const bar=document.getElementById('livesBar');
+  bar.innerHTML='';
+  for(let i=0;i<MAX_WRONG;i++){
+    const d=document.createElement('div');
+    d.className='life'+(i<wrongCount?' gone':'');
+    bar.appendChild(d);
+  }
+}
+
+/* ── Word tiles ── */
+function renderWord(){
+  const row=document.getElementById('wordRow');
+  row.innerHTML='';
+  for(const ch of secret){
+    const tile=document.createElement('div');
+    tile.className='tile';
+    const letter=document.createElement('div');
+    letter.className='tile-letter';
+    const bar=document.createElement('div');
+    bar.className='tile-bar';
+    if(guessed.has(ch)){
+      letter.textContent=ch;
+      tile.classList.add('revealed');
+      if(lastHits.has(ch))tile.style.animationDelay=Math.random()*0.1+'s';
+    } else if(over){
+      letter.textContent=ch;
+      tile.classList.add('missed');
+    }
+    tile.appendChild(letter);
+    tile.appendChild(bar);
+    row.appendChild(tile);
+  }
+}
+
+/* ── Wrong letters ── */
+function renderWrong(){
+  const el=document.getElementById('wrongLetters');
+  const bad=[...guessed].filter(c=>!secret.includes(c));
+  el.textContent=bad.length?bad.join('  '):'\u00a0';
+}
+
+/* ── Keyboard ── */
+function renderKeyboard(){
+  const kb=document.getElementById('keyboard');
+  kb.innerHTML='';
+  for(const row of KB_ROWS){
+    const r=document.createElement('div');r.className='kb-row';
+    for(const ch of row){
+      const btn=document.createElement('button');
+      btn.className='key';btn.textContent=ch;
+      btn.onclick=()=>guess(ch);
+      if(guessed.has(ch)){
+        btn.classList.add(secret.includes(ch)?'hit':'miss');
+        btn.disabled=true;
+      }
+      r.appendChild(btn);
+    }
+    kb.appendChild(r);
+  }
+}
+
+/* ── Score ── */
+function updateScore(){
+  document.getElementById('scoreW').textContent=wins;
+  document.getElementById('scoreL').textContent=losses;
+  document.getElementById('scoreT').textContent=total;
+}
+
+/* ── Particles ── */
+function burst(color,count=18){
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const x=30+Math.random()*window.innerWidth*.7;
+    const y=20+Math.random()*window.innerHeight*.5;
+    p.style.cssText=`left:${x}px;top:${y}px;background:${color};
+      width:${3+Math.random()*4}px;height:${3+Math.random()*4}px;
+      animation:floatUp ${1+Math.random()*2}s ease forwards;
+      animation-delay:${Math.random()*.4}s`;
+    document.body.appendChild(p);
+    setTimeout(()=>p.remove(),3000);
+  }
+}
+
+/* ── Guess logic ── */
+function _origGuess(ch){
+  if(over||guessed.has(ch))return;
+  lastHits.clear();
+  guessed.add(ch);
+  if(!secret.includes(ch)){
+    wrongCount++;
+    const card=document.getElementById('gallowsCard');
+    card.classList.remove('shake');void card.offsetWidth;card.classList.add('shake');
+  } else {
+    lastHits.add(ch);
+  }
+  drawGallows(wrongCount);
+  renderWord();renderWrong();renderLives();renderKeyboard();
+  checkEnd();
+}
+
+function checkEnd(){
+  const won=[...secret].every(c=>guessed.has(c));
+  const lost=wrongCount>=MAX_WRONG;
+  const msg=document.getElementById('msgArea');
+  if(won){
+    over=true;wins++;total++;updateScore();
+    msg.innerHTML='<div class="message-box win">&#10022; Splendid! &#10022;</div>';
+    document.querySelectorAll('.key').forEach(b=>b.disabled=true);
+    burst('#c8a050');burst('#4abf80',10);
+  } else if(lost){
+    over=true;losses++;total++;updateScore();
+    renderWord();
+    msg.innerHTML=`<div class="message-box lose">&#9760; The word was <strong>${secret}</strong></div>`;
+    document.querySelectorAll('.key').forEach(b=>b.disabled=true);
+  } else {
+    msg.innerHTML='';
+  }
+}
+
+function newGame(){
+  const pick=BANK[Math.floor(Math.random()*BANK.length)];
+  secret=pick.word;guessed=new Set();lastHits=new Set();
+  wrongCount=0;over=false;
+  document.getElementById('msgArea').innerHTML='';
+  document.getElementById('hintBox').textContent='Hint: '+pick.hint;
+  drawGallows(0);renderWord();renderWrong();renderLives();renderKeyboard();
+}
+
+document.addEventListener('keydown',e=>{
+  const ch=e.key.toUpperCase();
+  if(/^[A-Z]$/.test(ch))guess(ch);
+});
+
+newGame();
+
+/* ════════════════════════════════════════════════════
+   RACE MODE  —  Supabase Realtime multiplayer
+   ════════════════════════════════════════════════════ */
+
+// ── Supabase config ──
+const SUPABASE_URL  = 'https://kinqthumfuqyivupsizm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpbnF0aHVtZnVxeWl2dXBzaXptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0ODA1NTQsImV4cCI6MjA5NjA1NjU1NH0.b8EkD29ig5Kacj31iecU88jftga4Q_OmyUKc-dFNNWk';
+
+let _sb = null;
+function getSB(){
+  if(!_sb && window.supabase){
+    _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  }
+  return _sb;
+}
+
+// ── Race state ──
+let race = {
+  active: false,
+  channel: null,
+  roomCode: '',
+  myName: '',
+  isHost: false,
+  players: {},     // id -> { name, guessed:[], wrong:0, done:false, won:false }
+  wordPick: null,  // { word, hint }
+  started: false,
+  finished: false,
+  myId: Math.random().toString(36).slice(2,9)
+};
+
+// ── Helpers ──
+function genRoomCode(){
+  return Math.random().toString(36).slice(2,6).toUpperCase();
+}
+function setModal(html){ document.getElementById('raceModal').innerHTML = html; }
+function showOverlay(){ document.getElementById('raceOverlay').classList.add('active'); }
+function hideOverlay(){ document.getElementById('raceOverlay').classList.remove('active'); }
+
+// ── Move Race HUD above arena ──
+function mountHud(){
+  const page = document.querySelector('.page');
+  const arena = document.getElementById('raceHud').parentNode;
+  const hud = document.getElementById('raceHud');
+  // move hud before arena div
+  const arenaEl = document.querySelector('.arena');
+  page.insertBefore(hud, arenaEl);
+  hud.classList.add('active');
+}
+function unmountHud(){
+  document.getElementById('raceHud').classList.remove('active');
+}
+
+// ── Open race lobby menu ──
+function openRaceMenu(){
+  setModal(`
+    <div class="race-title">⚔ Race Mode</div>
+    <div class="race-subtitle">Challenge friends to a live duel</div>
+    <input class="race-input" id="raceNameInput" placeholder="Your name (e.g. Hansel)" maxlength="16" />
+    <button class="race-btn" onclick="hostRoom()">Create Room</button>
+    <div class="race-divider">or join</div>
+    <input class="race-input" id="joinCodeInput" placeholder="Enter room code" maxlength="6" />
+    <button class="race-btn" onclick="joinRoom()">Join Room</button>
+    <button class="race-btn secondary" onclick="hideOverlay()">Cancel</button>
+  `);
+  showOverlay();
+  setTimeout(()=>{
+    const ni = document.getElementById('raceNameInput');
+    if(ni) ni.focus();
+  },100);
+}
+
+// ── Validate name ──
+function getName(){
+  const n = (document.getElementById('raceNameInput')||{}).value || race.myName;
+  return n.trim().slice(0,16) || 'Player';
+}
+
+// ── Create room ──
+async function hostRoom(){
+  const sb = getSB();
+  if(!sb){ showConfigModal(); return; }
+  const name = getName();
+  if(!name){ alert('Enter your name first'); return; }
+  race.myName = name;
+  race.isHost = true;
+  race.roomCode = genRoomCode();
+  race.myId = Math.random().toString(36).slice(2,9);
+  race.players = {};
+  race.players[race.myId] = { name, guessed:[], wrong:0, done:false, won:false };
+
+  setModal(`
+    <div class="race-title">Room Created</div>
+    <div class="race-subtitle">Share this code with friends</div>
+    <div class="room-code-display" onclick="copyCode('${race.roomCode}')">${race.roomCode}</div>
+    <div class="room-code-hint">Click to copy</div>
+    <div class="race-status-msg">Waiting for players<span class="wait-dot">.</span><span class="wait-dot">.</span><span class="wait-dot">.</span></div>
+    <div id="lobbyPlayerList" style="width:100%;display:flex;flex-direction:column;gap:6px;min-height:40px"></div>
+    <button class="race-btn" id="startRaceBtn" onclick="startRace()" disabled>Start Race</button>
+    <button class="race-btn secondary" onclick="leaveRace()">Cancel</button>
+  `);
+  showOverlay();
+  await subscribeRoom(race.roomCode);
+  broadcastPresence('join', { name, id: race.myId });
+  updateLobbyList();
+}
+
+// ── Join room ──
+async function joinRoom(){
+  const sb = getSB();
+  if(!sb){ showConfigModal(); return; }
+  const name = getName();
+  if(!name){ alert('Enter your name first'); return; }
+  const code = (document.getElementById('joinCodeInput')||{}).value.trim().toUpperCase();
+  if(code.length < 4){ alert('Enter a valid room code'); return; }
+  race.myName = name;
+  race.isHost = false;
+  race.roomCode = code;
+  race.myId = Math.random().toString(36).slice(2,9);
+  race.players = {};
+  race.players[race.myId] = { name, guessed:[], wrong:0, done:false, won:false };
+
+  setModal(`
+    <div class="race-title">Joining Room</div>
+    <div class="race-subtitle">${code}</div>
+    <div class="race-status-msg">Connecting<span class="wait-dot">.</span><span class="wait-dot">.</span><span class="wait-dot">.</span></div>
+    <div id="lobbyPlayerList" style="width:100%;display:flex;flex-direction:column;gap:6px;min-height:40px"></div>
+    <button class="race-btn secondary" onclick="leaveRace()">Cancel</button>
+  `);
+  showOverlay();
+  await subscribeRoom(race.roomCode);
+  broadcastPresence('join', { name, id: race.myId });
+}
+
+// ── Subscribe to Supabase channel ──
+async function subscribeRoom(code){
+  const sb = getSB();
+  if(race.channel){ race.channel.unsubscribe(); }
+  race.channel = sb.channel(`hangman-race-${code}`, {
+    config:{ broadcast:{ self: false } }
+  });
+  race.channel
+    .on('broadcast', { event:'presence' }, ({payload})=>handlePresence(payload))
+    .on('broadcast', { event:'start' },    ({payload})=>handleStart(payload))
+    .on('broadcast', { event:'guess' },    ({payload})=>handleRemoteGuess(payload))
+    .on('broadcast', { event:'done' },     ({payload})=>handleRemoteDone(payload))
+    .on('broadcast', { event:'leave' },    ({payload})=>handleLeave(payload))
+    .subscribe();
+}
+
+function broadcastPresence(type, data){
+  if(!race.channel) return;
+  race.channel.send({ type:'broadcast', event:'presence', payload:{ type, ...data } });
+}
+
+// ── Handle incoming presence ──
+function handlePresence(p){
+  if(p.id === race.myId) return;
+  if(p.type === 'join'){
+    if(!race.players[p.id]){
+      race.players[p.id] = { name: p.name, guessed:[], wrong:0, done:false, won:false };
+    }
+    // respond with our own presence so they see us
+    broadcastPresence('ack', { name: race.myName, id: race.myId });
+    updateLobbyList();
+    updateHudPlayers();
+  } else if(p.type === 'ack'){
+    if(!race.players[p.id]){
+      race.players[p.id] = { name: p.name, guessed:[], wrong:0, done:false, won:false };
+    }
+    updateLobbyList();
+    updateHudPlayers();
+  }
+}
+
+function handleLeave(p){
+  delete race.players[p.id];
+  updateLobbyList();
+  updateHudPlayers();
+}
+
+// ── Lobby list UI ──
+function updateLobbyList(){
+  const el = document.getElementById('lobbyPlayerList');
+  if(!el) return;
+  const names = Object.entries(race.players).map(([id,p])=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--emerald-hi);flex-shrink:0"></div>
+      <span style="font-size:.85rem;color:var(--text)">${p.name}</span>
+      ${id===race.myId?'<span style="font-size:.68rem;color:var(--gold);letter-spacing:.15em">YOU</span>':''}
+    </div>`).join('');
+  el.innerHTML = names || '<div style="color:var(--text-dim);font-size:.8rem">No players yet…</div>';
+
+  const startBtn = document.getElementById('startRaceBtn');
+  if(startBtn){
+    const count = Object.keys(race.players).length;
+    startBtn.disabled = count < 2;
+    startBtn.textContent = count < 2 ? `Waiting for players (${count}/2+)` : `Start Race (${count} players)`;
+  }
+}
+
+// ── Host starts the race ──
+function startRace(){
+  if(!race.isHost) return;
+  const pick = BANK[Math.floor(Math.random()*BANK.length)];
+  race.wordPick = pick;
+  race.channel.send({ type:'broadcast', event:'start', payload:{ word: pick.word, hint: pick.hint } });
+  beginRace(pick);
+}
+
+// ── Guest receives start signal ──
+function handleStart(p){
+  race.wordPick = { word: p.word, hint: p.hint };
+  beginRace(race.wordPick);
+}
+
+// ── Begin the actual game ──
+function beginRace(pick){
+  race.started = true;
+  race.finished = false;
+  // reset all player progress
+  for(const id in race.players){
+    race.players[id].guessed = [];
+    race.players[id].wrong = 0;
+    race.players[id].done = false;
+    race.players[id].won = false;
+  }
+  hideOverlay();
+  mountHud();
+  document.getElementById('hudRoomCode').textContent = ' ' + race.roomCode;
+  document.getElementById('raceBannerWrap').innerHTML = '';
+  race.active = true;
+  // start countdown then launch
+  runCountdown(['3','2','1','GO!'], ()=>{
+    // launch the solo game with the shared word
+    secret = pick.word;
+    guessed = new Set();
+    lastHits = new Set();
+    wrongCount = 0;
+    over = false;
+    document.getElementById('msgArea').innerHTML = '';
+    document.getElementById('hintBox').textContent = 'Hint: ' + pick.hint;
+    drawGallows(0);
+    renderWord();
+    renderWrong();
+    renderLives();
+    renderKeyboard();
+    updateHudPlayers();
+  });
+}
+
+// ── Countdown animation ──
+function runCountdown(steps, cb){
+  const splash = document.getElementById('countdownSplash');
+  const num    = document.getElementById('countdownNum');
+  splash.classList.add('active');
+  let i = 0;
+  function next(){
+    if(i >= steps.length){ splash.classList.remove('active'); cb(); return; }
+    num.textContent = steps[i];
+    num.style.animation = 'none';
+    void num.offsetWidth;
+    num.style.animation = 'countdown .9s ease forwards';
+    i++;
+    setTimeout(next, 900);
+  }
+  next();
+}
+
+// ── Race-aware guess() — replaces the solo _origGuess ──
+function guess(ch){
+  if(!race.active){
+    _origGuess(ch);
+    return;
+  }
+  if(over || guessed.has(ch)) return;
+  lastHits.clear();
+  guessed.add(ch);
+  if(!secret.includes(ch)){
+    wrongCount++;
+    const card = document.getElementById('gallowsCard');
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  } else {
+    lastHits.add(ch);
+  }
+  drawGallows(wrongCount);
+  renderWord(); renderWrong(); renderLives(); renderKeyboard();
+
+  // Broadcast guess
+  if(race.channel){
+    race.channel.send({ type:'broadcast', event:'guess', payload:{
+      id: race.myId,
+      ch,
+      guessed: [...guessed],
+      wrong: wrongCount
+    }});
+  }
+  // Update own chip
+  race.players[race.myId].guessed = [...guessed];
+  race.players[race.myId].wrong = wrongCount;
+  updateHudPlayers();
+
+  raceCheckEnd();
+}
+
+// ── Check race end ──
+function raceCheckEnd(){
+  const won  = [...secret].every(c=>guessed.has(c));
+  const lost = wrongCount >= MAX_WRONG;
+  if(!won && !lost) return;
+
+  over = true;
+  race.players[race.myId].done = true;
+  race.players[race.myId].won  = won;
+
+  if(won){
+    wins++; total++; updateScore();
+    document.getElementById('msgArea').innerHTML = '<div class="message-box win">&#10022; Splendid! &#10022;</div>';
+    document.querySelectorAll('.key').forEach(b=>b.disabled=true);
+    burst('#c8a050'); burst('#4abf80',10);
+  } else {
+    losses++; total++; updateScore();
+    renderWord();
+    document.getElementById('msgArea').innerHTML =
+      `<div class="message-box lose">&#9760; The word was <strong>${secret}</strong></div>`;
+    document.querySelectorAll('.key').forEach(b=>b.disabled=true);
+  }
+
+  if(race.channel){
+    race.channel.send({ type:'broadcast', event:'done', payload:{
+      id: race.myId, won
+    }});
+  }
+  updateHudPlayers();
+  checkRaceAllDone();
+}
+
+// ── Remote guess ──
+function handleRemoteGuess(p){
+  if(!race.players[p.id]) return;
+  race.players[p.id].guessed = p.guessed;
+  race.players[p.id].wrong   = p.wrong;
+  updateHudPlayers();
+}
+
+// ── Remote done ──
+function handleRemoteDone(p){
+  if(!race.players[p.id]) return;
+  race.players[p.id].done = true;
+  race.players[p.id].won  = p.won;
+  updateHudPlayers();
+  checkRaceAllDone();
+}
+
+// ── Check if all players done ──
+function checkRaceAllDone(){
+  if(race.finished) return;
+  const all = Object.values(race.players);
+  if(!all.every(p=>p.done)) return;
+  race.finished = true;
+
+  const winners = all.filter(p=>p.won);
+  const me = race.players[race.myId];
+  const wrap = document.getElementById('raceBannerWrap');
+
+  setTimeout(()=>{
+    const page = document.querySelector('.page');
+    page.insertBefore(wrap, document.getElementById('raceHud').nextSibling);
+    if(winners.length === 0){
+      wrap.innerHTML = `<div class="race-result-banner draw">💀 Everyone fell — the gallows wins this round!</div>`;
+    } else if(me.won){
+      const others = winners.filter(p=>p!==me);
+      wrap.innerHTML = `<div class="race-result-banner winner">🏆 Victory! You solved it first!</div>`;
+    } else {
+      const wnames = winners.map(p=>p.name).join(', ');
+      wrap.innerHTML = `<div class="race-result-banner loser">😞 ${wnames} beat you this round</div>`;
+    }
+
+    // Show rematch button after 1.5s
+    setTimeout(()=>{
+      wrap.innerHTML += `<div style="text-align:center;margin-top:10px">
+        ${race.isHost
+          ? `<button class="race-btn" style="width:auto;padding:10px 32px" onclick="rematch()">⚔ Rematch</button>`
+          : `<div class="race-status-msg">Waiting for host to start rematch<span class="wait-dot">.</span><span class="wait-dot">.</span><span class="wait-dot">.</span></div>`
+        }
+        <button class="race-btn secondary" style="margin-left:8px;width:auto;padding:10px 24px" onclick="leaveRace()">Leave Race</button>
+      </div>`;
+    }, 1500);
+  }, 800);
+}
+
+// ── HUD player chips ──
+function updateHudPlayers(){
+  const row = document.getElementById('racePlayersRow');
+  if(!row) return;
+  row.innerHTML = Object.entries(race.players).map(([id,p])=>{
+    const progress = race.started
+      ? `${p.guessed.filter(c=>secret.includes(c)).length}/${secret.length}`
+      : '';
+    let cls = id===race.myId ? 'me' : '';
+    if(p.won) cls = 'finished';
+    else if(p.done && !p.won) cls = 'lost';
+    const icon = p.won ? '✓' : p.done ? '✗' : '';
+    return `<div class="race-player-chip ${cls}">
+      <div class="pip"></div>
+      ${p.name}${icon?` ${icon}`:''}
+      ${progress?`<span class="race-progress">${progress}</span>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── Rematch (host only) ──
+function rematch(){
+  document.getElementById('raceBannerWrap').innerHTML = '';
+  startRace();
+}
+
+// ── Leave race ──
+function leaveRace(){
+  if(race.channel){
+    race.channel.send({ type:'broadcast', event:'leave', payload:{ id:race.myId } });
+    race.channel.unsubscribe();
+    race.channel = null;
+  }
+  race.active = false;
+  race.started = false;
+  race.finished = false;
+  race.players = {};
+  unmountHud();
+  hideOverlay();
+  document.getElementById('raceBannerWrap').innerHTML = '';
+  newGame();
+}
+
+// ── Copy room code ──
+function copyCode(code){
+  navigator.clipboard.writeText(code).then(()=>{
+    const el = document.querySelector('.room-code-display');
+    if(el){ el.textContent='Copied!'; setTimeout(()=>el.textContent=code,1200); }
+  }).catch(()=>{});
+}
+
+// ── Show config modal (when Supabase not configured) ──
+function showConfigModal(){
+  setModal(`
+    <div class="race-title">Setup Required</div>
+    <div class="race-subtitle">Race Mode needs Supabase</div>
+    <div style="font-size:.8rem;color:var(--text-dim);text-align:center;line-height:1.7">
+      Race Mode uses <strong style="color:var(--gold)">Supabase Realtime</strong> to sync players.<br><br>
+      1. Create a free project at <strong style="color:var(--gold)">supabase.com</strong><br>
+      2. Copy your <em>Project URL</em> and <em>anon key</em><br>
+      3. Replace the two constants near the bottom of this file:<br>
+      <code style="display:block;margin:10px 0;padding:8px;background:rgba(0,0,0,.4);border-radius:6px;font-size:.75rem;color:var(--emerald-hi);letter-spacing:.05em">SUPABASE_URL = 'https://xxx.supabase.co'<br>SUPABASE_ANON = 'your-anon-key'</code>
+      No server needed — Supabase free tier is plenty!
+    </div>
+    <button class="race-btn" onclick="window.open('https://supabase.com','_blank')">Open Supabase ↗</button>
+    <button class="race-btn secondary" onclick="hideOverlay()">Close</button>
+  `);
+  showOverlay();
+}
+
+</script>
+</body>
+</html>
